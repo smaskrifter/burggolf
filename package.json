@@ -1,0 +1,10 @@
+{
+  "name": "burggolf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Burggolf – 3D-Minigolf im Burghof für den Browser",
+  "scripts": {
+    "test": "node test/solve.mjs"
+  }
+}

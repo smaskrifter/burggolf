@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Burggolf</title>
+  <meta name="description" content="Burggolf – 3D-Minigolf im Burghof. Allein oder zu mehreren an einem Gerät.">
+  <meta name="theme-color" content="#2b3340">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Burggolf">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <!-- Anzeige während des Spiels -->
+  <div id="hud" hidden>
+    <div class="hud-box hud-left">
+      <b id="hudHole">Bahn 1/9</b>
+      <span id="hudName">Burgtor</span>
+      <span class="pill" id="hudPar">Par 2</span>
+    </div>
+    <div class="hud-box hud-center">
+      <i class="dot" id="hudDot"></i>
+      <b id="hudPlayer">Spieler 1</b>
+      <span id="hudStrokes">Schlag 1</span>
+    </div>
+    <div class="hud-right">
+      <button class="icon-btn" id="btnSound" aria-label="Ton an oder aus">🔊</button>
+      <button class="icon-btn" id="btnPause" aria-label="Pause">☰</button>
+    </div>
+  </div>
+
+  <div id="power" hidden><div id="powerFill"></div><span id="powerText">0 %</span></div>
+  <div id="hint" hidden></div>
+  <div id="toast" hidden></div>
+
+  <!-- Hauptmenü -->
+  <div id="menu" class="screen">
+    <div class="panel menu-panel">
+      <div class="menu-head">
+        <h1>Burggolf</h1>
+        <p class="sub">Minigolf im Burghof · 9 Bahnen</p>
+        <p class="record" id="menuRecord" hidden></p>
+      </div>
+      <div class="menu-body">
+        <div class="field">
+          <label>Wie viele spielen?</label>
+          <div class="seg" id="playerCount">
+            <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button>
+          </div>
+        </div>
+        <div class="names" id="names"></div>
+        <button class="btn primary" id="btnStart">Los geht’s</button>
+        <button class="btn" id="btnResume" hidden>Runde fortsetzen</button>
+        <div class="toggles">
+          <button class="chip" id="optSound">Ton: an</button>
+          <button class="chip" id="optRetro">Retro-Pixel: aus</button>
+          <button class="chip" id="optFull" hidden>Vollbild</button>
+        </div>
+        <p class="how">Finger auf den Bildschirm, zurückziehen wie bei einer Schleuder, zielen und loslassen.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Punktekarte -->
+  <div id="card" class="screen" hidden>
+    <div class="panel card-panel">
+      <h2 id="cardTitle">Punktekarte</h2>
+      <p class="sub" id="cardSub"></p>
+      <div class="table-wrap"><table id="cardTable"></table></div>
+      <div class="row">
+        <button class="btn" id="btnCardMenu" hidden>Hauptmenü</button>
+        <button class="btn primary" id="btnCardNext">Nächste Bahn</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pause" class="screen" hidden>
+    <div class="panel pause-panel">
+      <h2>Pause</h2>
+      <button class="btn primary" id="btnContinue">Weiterspielen</button>
+      <button class="btn" id="btnShowCard">Punktekarte</button>
+      <div class="toggles">
+        <button class="chip" id="optSound2">Ton: an</button>
+        <button class="chip" id="optRetro2">Retro-Pixel: aus</button>
+      </div>
+      <button class="btn" id="btnQuit">Zum Hauptmenü</button>
+      <p class="how">Die Runde wird gespeichert und kann später fortgesetzt werden.</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
