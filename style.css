@@ -276,6 +276,7 @@ th:first-child, td:first-child { text-align: left; max-width: 34vw; overflow: hi
 thead th { color: var(--muted); font-weight: 600; }
 tr.par td { color: var(--muted); }
 tr.best td { color: var(--muted); font-size: 12px; border-bottom: 0; }
+tr.best td:first-child { line-height: 1.15; }
 td.under { color: var(--good); font-weight: 700; }
 td.over { color: var(--bad); }
 td.cur, th.cur { background: rgba(232, 193, 90, 0.14); }

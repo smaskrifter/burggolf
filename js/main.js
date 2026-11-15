@@ -39,7 +39,18 @@ function setCourse(id) {
 }
 setCourse(store.get('course', courses[0].id));
 // Rekorde je Parcours (der erste behält den alten Schlüssel, damit nichts verloren geht)
-const bestKey = () => (course === courses[0] ? 'best' : 'best.' + course.id);
+// und je Steuerung: 'overview' nutzt die bisherigen Schlüssel, 'classic' bekommt eigene
+const VIEWS = { overview: 'Übersicht', classic: 'Klassisch' };
+const viewId = () => (classic ? 'classic' : 'overview');
+const bestKey = (view = viewId()) => (view === 'classic'
+  ? `best.${course.id}.classic`
+  : course === courses[0] ? 'best' : 'best.' + course.id);
+const getBest = (view) => store.get(bestKey(view), null) || { total: null, holes: [] };
+/** Steuerung einer ganzen Runde: 'overview', 'classic' oder 'mixed' (unterwegs gewechselt). */
+function roundView(p) {
+  const v = holes.map((_, i) => game.views[p][i] || 'overview');
+  return v.every((x) => x === v[0]) ? v[0] : 'mixed';
+}
 
 const world = new World($('c'));
 const sound = new Sound();
@@ -60,6 +71,7 @@ let sim = null;
 let mode = 'menu'; // menu | aim | roll | wait | card
 let paused = false;
 let strokes = 0;
+let holeView = null; // Steuerung, mit der die laufende Bahn gespielt wird
 let lastPos = { x: 0, z: 0 };
 let settle = 0;
 let epoch = 0;
@@ -225,11 +237,9 @@ function showMenu() {
     const done = save.scores.every((s) => s[save.hole] != null);
     $('btnResume').textContent = `Fortsetzen: ${sc.name}, Bahn ${Math.min(save.hole + (done ? 2 : 1), sc.holes.length)}`;
   }
-  const best = store.get(bestKey(), null);
-  if (best?.total) {
-    $('menuRecord').hidden = false;
-    $('menuRecord').textContent = `Rekord ${course.name}: ${best.total} Schläge`;
-  } else $('menuRecord').hidden = true;
+  const totals = Object.keys(VIEWS).map((v) => [VIEWS[v], getBest(v).total]);
+  $('menuRecord').hidden = !totals.some(([, t]) => t);
+  $('menuRecord').textContent = `Rekord ${course.name}: ` + totals.map(([n, t]) => `${n} ${t || '–'}`).join(' · ');
   $('optFull').hidden = !document.documentElement.requestFullscreen;
   applySettings();
   show('menu', true);
@@ -245,6 +255,7 @@ function startGame(resume = null) {
     game = {
       players: resume.players.map((name, i) => ({ name, color: PLAYER_COLORS[i] })),
       scores: resume.scores,
+      views: resume.views || resume.scores.map(() => []),
       hole: resume.hole,
       player: 0,
     };
@@ -256,6 +267,7 @@ function startGame(resume = null) {
     game = {
       players: list.map((name, i) => ({ name, color: PLAYER_COLORS[i] })),
       scores: list.map(() => []),
+      views: list.map(() => []),
       hole: 0,
       player: 0,
     };
@@ -269,7 +281,7 @@ function startGame(resume = null) {
 
 function saveGame() {
   if (!game) return;
-  store.set('save', { course: course.id, players: game.players.map((p) => p.name), scores: game.scores, hole: game.hole });
+  store.set('save', { course: course.id, players: game.players.map((p) => p.name), scores: game.scores, views: game.views, hole: game.hole });
 }
 
 // --------------------------------------------------------------- Ablauf ---
@@ -295,6 +307,7 @@ function nextPlayer(first = false) {
   if (p < 0) { showCard(); return; }
   game.player = p;
   strokes = 0;
+  holeView = null;
   const hole = holes[game.hole];
   sim.placeBall(hole.tee.x, hole.tee.z);
   lastPos = { ...hole.tee };
@@ -317,6 +330,8 @@ function updateHud() {
 function shoot(dx, dz, power) {
   if (mode !== 'aim') return;
   strokes++;
+  // Merken, mit welcher Steuerung die Bahn gespielt wird (Wechsel mitten in der Bahn = gemischt)
+  holeView = holeView == null || holeView === viewId() ? viewId() : 'mixed';
   lastPos = { x: sim.ball.x, z: sim.ball.z };
   sim.shoot(dx, dz, power);
   sound.putt(power);
@@ -338,11 +353,15 @@ function finishHole(n, gaveUp = false) {
   mode = 'wait';
   const hole = holes[game.hole];
   game.scores[game.player][game.hole] = n;
+  const view = holeView || viewId();
+  game.views[game.player][game.hole] = view;
   saveGame();
-  const best = store.get(bestKey(), { total: null, holes: [] });
-  if (!gaveUp && (best.holes[game.hole] == null || n < best.holes[game.hole])) {
-    best.holes[game.hole] = n;
-    store.set(bestKey(), best);
+  if (!gaveUp && view !== 'mixed') {
+    const best = getBest(view);
+    if (best.holes[game.hole] == null || n < best.holes[game.hole]) {
+      best.holes[game.hole] = n;
+      store.set(bestKey(view), best);
+    }
   }
   toast(resultName(n, hole.par, gaveUp), 1700);
   if (gaveUp) sound.sad();
@@ -395,7 +414,6 @@ function handleEvents() {
 function sum(arr) { return arr.reduce((s, v) => s + (v || 0), 0); }
 
 function renderCard(final) {
-  const best = store.get(bestKey(), { total: null, holes: [] });
   const cur = game.hole;
   const played = (p) => game.scores[p].filter((v) => v != null).length;
   let html = '<thead><tr><th>Bahn</th>';
@@ -414,8 +432,10 @@ function renderCard(final) {
     const diff = total - parSoFar;
     html += `<td class="total">${total} <small>(${diff > 0 ? '+' : ''}${diff === 0 ? '±0' : diff})</small></td></tr>`;
   });
-  if (best.holes.some((v) => v != null)) {
-    html += '<tr class="best"><td>Bestwert</td>' + holes.map((_, i) => `<td>${best.holes[i] ?? '–'}</td>`).join('') + `<td>${best.total ?? '–'}</td></tr>`;
+  for (const v of Object.keys(VIEWS)) {
+    const best = getBest(v);
+    if (best.total == null && !best.holes.some((x) => x != null)) continue;
+    html += `<tr class="best"><td>Best<br>${VIEWS[v]}</td>` + holes.map((_, i) => `<td>${best.holes[i] ?? '–'}</td>`).join('') + `<td>${best.total ?? '–'}</td></tr>`;
   }
   html += '</tbody>';
   $('cardTable').innerHTML = html;
@@ -442,9 +462,20 @@ function showCard() {
     // Runde beendet
     const totals = game.scores.map(sum);
     const min = Math.min(...totals);
-    const best = store.get(bestKey(), { total: null, holes: [] });
-    const record = best.total == null || min < best.total;
-    if (record) { best.total = min; store.set(bestKey(), best); }
+    // Rekorde je Steuerung; eine Runde zählt nur, wenn sie durchgehend mit einer gespielt wurde
+    const rv = game.players.map((_, p) => roundView(p));
+    const records = [];
+    for (const v of Object.keys(VIEWS)) {
+      const mine = totals.filter((_, p) => rv[p] === v);
+      if (!mine.length) continue;
+      const best = getBest(v);
+      const top = Math.min(...mine);
+      if (best.total == null || top < best.total) {
+        best.total = top;
+        store.set(bestKey(v), best);
+        records.push(VIEWS[v]);
+      }
+    }
     store.del('save');
     const winners = game.players.filter((_, p) => totals[p] === min).map((p) => p.name);
     $('cardTitle').textContent = `${course.name} geschafft`;
@@ -452,14 +483,15 @@ function showCard() {
     if (game.players.length === 1) sub = `${min} Schläge bei Par ${coursePar}`;
     else if (winners.length === 1) sub = `${winners[0]} gewinnt mit ${min} Schlägen!`;
     else sub = `Unentschieden: ${winners.join(' und ')} mit ${min} Schlägen`;
-    if (record) sub += ' · Neuer Rekord!';
+    if (records.length) sub += ` · Neuer Rekord (${records.join(', ')})!`;
+    else if (rv.every((v) => v === 'mixed')) sub += ' · Steuerung gewechselt – zählt nicht als Rekord';
     $('cardSub').textContent = sub;
     $('btnCardNext').textContent = 'Neue Runde';
     $('btnCardMenu').hidden = false;
     const again = game.players.map((p) => p.name);
     cardAfter = () => {
       show('card', false);
-      game = { players: again.map((name, i) => ({ name, color: PLAYER_COLORS[i] })), scores: again.map(() => []), hole: 0, player: 0 };
+      game = { players: again.map((name, i) => ({ name, color: PLAYER_COLORS[i] })), scores: again.map(() => []), views: again.map(() => []), hole: 0, player: 0 };
       loadHole(0);
     };
     renderCard(true);
@@ -771,8 +803,8 @@ window.burggolf = {
   /** Springt direkt auf eine Bahn (für Tests): Parcours-Kennung, Bahnnummer ab 1. */
   jump: (id, n) => {
     setCourse(id);
-    game = { players: [{ name: 'Test', color: PLAYER_COLORS[0] }], scores: [[]], hole: n - 1, player: 0 };
-    for (let i = 0; i < n - 1; i++) game.scores[0][i] = holes[i].par;
+    game = { players: [{ name: 'Test', color: PLAYER_COLORS[0] }], scores: [[]], views: [[]], hole: n - 1, player: 0 };
+    for (let i = 0; i < n - 1; i++) { game.scores[0][i] = holes[i].par; game.views[0][i] = viewId(); }
     show('menu', false); show('card', false);
     world.setOrbit(false);
     world.setTheme(course.theme);
