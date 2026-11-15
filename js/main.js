@@ -115,9 +115,8 @@ function goFullscreen(force = false) {
   if (!force && !touch) return;
   try {
     if (!document.fullscreenElement && el.requestFullscreen) {
-      el.requestFullscreen({ navigationUI: 'hide' })
-        .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
-        .catch(() => {});
+      // Kein Querformat-Zwang: Das Spiel passt sich Hoch- und Querformat an.
+      el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
     }
   } catch { /* nicht unterstützt (z. B. iPhone) */ }
 }
