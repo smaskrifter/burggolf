@@ -59,7 +59,18 @@ export class World {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
+    this.camera = new THREE.PerspectiveCamera(38, 1, 0.2, 400);
+    this.fitCam = new THREE.PerspectiveCamera(38, 1, 0.5, 400); // nur zum Ausrechnen der Übersicht
+    // Klassische Ansicht (Kamera hinter dem Ball); wird von main.js gesteuert
+    this.chase = { on: false, yaw: 0, tilt: 0.35, peek: false, golferShow: false, golferFollow: false, swing: 0 };
+    this.chaseCur = { x: 0, y: 0, z: 0, yaw: 0, tilt: 0.35 };
+    this.blend = 0; // 0 = Übersicht, 1 = hinter dem Ball
+    this.introHold = 0;
+    this.snapPending = true;
+    this.ovAz = 0;
+    this.gAnchor = null;
+    this._pos = new THREE.Vector3(); this._tgt = new THREE.Vector3();
+    this._cpos = new THREE.Vector3(); this._ctgt = new THREE.Vector3();
     this.retro = false;
     this.w = 1; this.h = 1;
     this.azimuth = 0;
@@ -116,6 +127,56 @@ export class World {
 
     this.buildAim();
     this.buildParticles();
+    this.buildGolfer();
+  }
+
+  // --- Spielfigur (nur in der klassischen Ansicht) -----------------------------
+  buildGolfer() {
+    const L = (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const M = this.golferMat = { shirt: L(0xffffff), hair: L(0x5a3a1c), skin: L(0xf0c39a), shorts: L(0x30343c), shoe: L(0xf2f2f2), club: L(0x8d949c) };
+    const g = new THREE.Group();
+    const box = (w, h, d, mat, x, y, z, parent = g) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      parent.add(m);
+      return m;
+    };
+    const limb = (a, b, r, mat) => {
+      const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, va.distanceTo(vb), 6), mat);
+      m.position.copy(va).add(vb).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
+      g.add(m);
+    };
+    // Die Figur steht seitlich zum Ball: lokale x-Achse = Schlagrichtung, z-Achse = zum Ball hin.
+    for (const sx of [-1, 1]) {
+      box(0.15, 0.72, 0.17, M.skin, sx * 0.15, 0.45, 0);
+      box(0.2, 0.09, 0.3, M.shoe, sx * 0.15, 0.045, 0.05);
+      limb([sx * 0.27, 1.52, 0.05], [sx * 0.04, 1.03, 0.44], 0.055, M.skin);
+    }
+    box(0.5, 0.32, 0.27, M.shorts, 0, 0.93, 0);
+    box(0.52, 0.56, 0.27, M.shirt, 0, 1.36, 0.03);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), M.skin);
+    head.position.set(0, 1.82, 0.08);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.185, 10, 8), M.hair);
+    hair.position.set(0, 1.86, 0.03);
+    g.add(head, hair);
+    const pivot = new THREE.Group();
+    pivot.position.set(0, 1.03, 0.45);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.0, 5), M.club);
+    shaft.position.y = -0.5;
+    pivot.add(shaft);
+    box(0.17, 0.07, 0.07, M.club, 0.05, -0.99, 0, pivot);
+    g.add(pivot);
+    g.visible = false;
+    this.golfer = g;
+    this.clubPivot = pivot;
+    this.scene.add(g);
+  }
+
+  setGolferLook(shirtHex, hairHex) {
+    this.golferMat.shirt.color.set(shirtHex);
+    this.golferMat.hair.color.set(hairHex);
   }
 
   skyTexture() {
@@ -506,6 +567,10 @@ export class World {
 
     this.zoomIntro = 1.3;
     this.sink = 0;
+    this.blend = 0;
+    this.introHold = 1.3;
+    this.snapPending = true;
+    this.gAnchor = null;
     this.fitCamera();
   }
 
@@ -513,7 +578,7 @@ export class World {
   buildScenery(hole, g, seed) {
     const rand = rng(seed * 7919 + 13);
     const W = hole.cols;
-    const zc = -3.4;
+    const zc = -6.8;
     const x0 = W * 0.12, x1 = W * 0.88;
     // Ringmauer
     g.box(x0, x1, BASE_Y, 1.5, zc - 0.5, zc + 0.5, C.stone, C.stoneLight);
@@ -537,17 +602,24 @@ export class World {
       roof.position.set(x, BASE_Y + 4.2, zc);
       this.holeGroup.add(tw, ring, roof);
     }
-    // Bäume (nur hinten und rechts, damit sie nichts verdecken)
-    const tree = (x, z, s) => {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.14 * s, 0.6 * s, 6), this.mat.wood);
-      trunk.position.set(x, BASE_Y + 0.3 * s, z);
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.7 * s, 1.7 * s, 7), this.mat.tree);
-      crown.position.set(x, BASE_Y + 1.4 * s, z);
+    // Bäume ringsum in einigem Abstand (in der klassischen Ansicht bilden sie den Horizont)
+    const tree = (x, z, sc) => {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * sc, 0.14 * sc, 0.6 * sc, 6), this.mat.wood);
+      trunk.position.set(x, BASE_Y + 0.3 * sc, z);
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.7 * sc, 1.7 * sc, 7), this.mat.tree);
+      crown.position.set(x, BASE_Y + 1.4 * sc, z);
       this.holeGroup.add(trunk, crown);
     };
-    for (let i = 0; i < 9; i++) tree(-6 + rand() * (W + 12), -7.5 - rand() * 9, 0.9 + rand() * 0.9);
-    for (let i = 0; i < 4; i++) tree(W + 2.5 + rand() * 6, -3 + rand() * (hole.rows + 2), 0.8 + rand() * 0.7);
-    for (let i = 0; i < 3; i++) tree(-7 + rand() * 4, -6 + rand() * 3, 0.8 + rand() * 0.7);
+    const cx = W / 2, cz = hole.rows / 2;
+    const reach = Math.hypot(cx, cz);
+    for (let i = 0; i < 34; i++) {
+      const ang = (i / 34) * Math.PI * 2 + rand() * 0.15;
+      const dist = reach + 7.5 + rand() * 11;
+      const x = cx + Math.cos(ang) * dist, z = cz + Math.sin(ang) * dist;
+      const sc = 1.0 + rand() * 1.2;
+      if (x > x0 - 2 && x < x1 + 2 && z > zc - 4 && z < zc + 2) continue; // nicht in der Burg
+      tree(x, z, sc);
+    }
   }
 
   // --- Kamera ---------------------------------------------------------------
@@ -570,7 +642,9 @@ export class World {
   fitCamera() {
     const hole = this.hole;
     if (!hole) return;
-    const cam = this.camera;
+    const cam = this.fitCam;
+    cam.aspect = this.w / this.h;
+    cam.updateProjectionMatrix();
     const az = this.orbit ? this.azimuth : (this.w >= this.h ? 0 : -Math.PI / 2);
     const dir = new THREE.Vector3(Math.sin(az) * Math.cos(TILT), Math.sin(TILT), Math.cos(az) * Math.cos(TILT));
     const top = hole.maxHeight + 0.5;
@@ -619,19 +693,43 @@ export class World {
       target.addScaledVector(right, offX * dist * tanHalf * cam.aspect);
       target.addScaledVector(up, offY * dist * tanHalf);
     }
-    if (this.flag) this.flag.rotation.y = az; // Wimpel immer quer zur Blickrichtung
+    this.ovAz = az;
     this.camTarget = target;
     this.camDir = dir;
     this.camDist = dist;
     this.applyCamera();
   }
 
+  /** Bildwinkel der klassischen Ansicht: im Hochformat weiter, damit man seitlich genug sieht. */
+  chaseFov() {
+    const deg = (2 * Math.atan(Math.tan((24 * Math.PI) / 180) / (this.w / this.h)) * 180) / Math.PI;
+    return Math.min(78, Math.max(46, deg));
+  }
+
+  /** Setzt die Kamera: Übersicht, hinter dem Ball oder eine weiche Mischung aus beidem. */
   applyCamera() {
     if (!this.camTarget) return;
+    const cam = this.camera;
     const d = this.camDist * (this.orbit ? 1.12 : this.zoomIntro);
-    this.camera.position.copy(this.camTarget).addScaledVector(this.camDir, d);
-    this.camera.lookAt(this.camTarget);
-    this.camera.updateMatrixWorld();
+    const pos = this._pos.copy(this.camTarget).addScaledVector(this.camDir, d);
+    const tgt = this._tgt.copy(this.camTarget);
+    let fov = 38;
+    const k = this.orbit ? 0 : this.blend * this.blend * (3 - 2 * this.blend);
+    if (k > 0) {
+      const c = this.chaseCur, t = c.tilt;
+      const dx = Math.cos(c.yaw), dz = Math.sin(c.yaw);
+      // t = 0: Weitsicht (flach, weit nach vorn) ... t = 1: Draufsicht (steil von oben)
+      const back = 3.6 - 1.4 * t, height = 2.6 + 6.9 * t, ahead = 2.6 - 1.8 * t;
+      this._cpos.set(c.x - dx * back, c.y + height, c.z - dz * back);
+      this._ctgt.set(c.x + dx * ahead, c.y + 0.2, c.z + dz * ahead);
+      pos.lerp(this._cpos, k);
+      tgt.lerp(this._ctgt, k);
+      fov += (this.chaseFov() - 38) * k;
+    }
+    cam.position.copy(pos);
+    cam.lookAt(tgt);
+    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
+    cam.updateMatrixWorld();
   }
 
   setBallColor(hex) {
@@ -704,6 +802,36 @@ export class World {
       this.flagLift += ((near ? 1 : 0) - this.flagLift) * Math.min(1, dt * 6);
       this.flag.position.y = H(hole.cup.x, hole.cup.z) + this.flagLift * 0.9;
       this.flag.children[1].rotation.y = Math.sin(this.time * 2.2) * 0.25;
+      // Wimpel immer quer zur Blickrichtung
+      const cy = this.chaseCur.yaw;
+      this.flag.rotation.y = this.blend > 0.5 && !this.orbit ? Math.atan2(-Math.cos(cy), -Math.sin(cy)) : this.ovAz;
+    }
+
+    // Klassische Ansicht: Kamera folgt dem Ball weich, Figur steht am Ball
+    const c = this.chase, cur = this.chaseCur;
+    if (this.snapPending) {
+      Object.assign(cur, { x: b.x, y, z: b.z, yaw: c.yaw, tilt: c.tilt });
+      this.snapPending = false;
+    }
+    if (this.introHold > 0) this.introHold -= dt;
+    const wantChase = c.on && !c.peek && this.introHold <= 0 && !this.orbit;
+    this.blend += ((wantChase ? 1 : 0) - this.blend) * (1 - Math.exp(-dt * 5));
+    if (Math.abs((wantChase ? 1 : 0) - this.blend) < 0.002) this.blend = wantChase ? 1 : 0;
+    const kf = 1 - Math.exp(-dt * 9);
+    cur.x += (b.x - cur.x) * kf; cur.y += (y - cur.y) * kf; cur.z += (b.z - cur.z) * kf;
+    cur.tilt += (c.tilt - cur.tilt) * kf;
+    const dyaw = Math.atan2(Math.sin(c.yaw - cur.yaw), Math.cos(c.yaw - cur.yaw));
+    cur.yaw += dyaw * (1 - Math.exp(-dt * 12));
+
+    const gf = this.golfer;
+    gf.visible = c.on && c.golferShow && !this.orbit;
+    if (gf.visible) {
+      if (c.golferFollow || !this.gAnchor) this.gAnchor = { x: b.x, z: b.z, yaw: c.yaw };
+      const a = this.gAnchor;
+      const dx = Math.cos(a.yaw), dz = Math.sin(a.yaw);
+      gf.position.set(a.x + dz * 0.45 - dx * 0.17, H(a.x, a.z), a.z - dx * 0.45 - dz * 0.17);
+      gf.rotation.y = Math.atan2(-dz, dx);
+      this.clubPivot.rotation.z = c.swing;
     }
 
     this.updateParticles(dt);
@@ -711,8 +839,8 @@ export class World {
     if (this.orbit) {
       this.azimuth += dt * 0.12;
       this.fitCamera();
-    } else if (this.zoomIntro > 1) {
-      this.zoomIntro = Math.max(1, 1 + (this.zoomIntro - 1) * Math.exp(-dt * 3.2) - dt * 0.02);
+    } else {
+      if (this.zoomIntro > 1) this.zoomIntro = Math.max(1, 1 + (this.zoomIntro - 1) * Math.exp(-dt * 3.2) - dt * 0.02);
       this.applyCamera();
     }
   }

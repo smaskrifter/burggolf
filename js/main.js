@@ -6,6 +6,9 @@ import { Sound } from './audio.js';
 
 const MAX_STROKES = 10;
 const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#6ec6ff', '#ff8fb1'];
+const HAIR_COLORS = ['#5a3a1c', '#1f1a17', '#c9772c', '#d8c06a'];
+const CHARGE_TIME = 1.0; // Sekunden, bis die Kraftleiste einmal voll ist
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -31,6 +34,15 @@ const world = new World($('c'));
 const sound = new Sound();
 sound.on = store.get('sound', true);
 let retro = store.get('retro', false);
+// Steuerung: 'overview' (Schleuder in der Draufsicht) oder 'classic' (Kamera hinter dem Ball)
+let classic = store.get('view', 'overview') === 'classic';
+let aimAngle = 0; // Zielrichtung in der klassischen Ansicht (Bogenmaß)
+let tilt = clamp(store.get('tilt', 0.35), 0, 1); // 0 = Weitsicht, 1 = Draufsicht
+let charge = null; // { t, p, id } solange der Schlag-Knopf gehalten wird
+let swingT = -1, swingFrom = 0; // Ausschwung-Animation
+let peek = false; // Übersicht vorübergehend einblenden
+let turnHold = null; // gehaltener Dreh-Knopf
+const keys = new Set();
 
 let game = null; // { players:[{name,color}], scores:[[…]], hole, player }
 let sim = null;
@@ -91,6 +103,24 @@ function applySettings() {
   for (const id of ['optSound', 'optSound2']) $(id).textContent = `Ton: ${sound.on ? 'an' : 'aus'}`;
   for (const id of ['optRetro', 'optRetro2']) $(id).textContent = `Retro-Pixel: ${retro ? 'an' : 'aus'}`;
   $('btnSound').textContent = sound.on ? '🔊' : '🔇';
+  for (const id of ['optView', 'optView2']) $(id).textContent = `Steuerung: ${classic ? 'Klassisch' : 'Übersicht'}`;
+  $('howText').textContent = classic
+    ? 'Wischen dreht die Blickrichtung, hoch und runter kippt die Sicht. Schlag-Knopf halten und im richtigen Moment loslassen.'
+    : 'Finger auf den Bildschirm, zurückziehen wie bei einer Schleuder, zielen und loslassen.';
+}
+function toggleView() {
+  classic = !classic;
+  store.set('view', classic ? 'classic' : 'overview');
+  sound.click();
+  peek = false;
+  charge = null;
+  endDrag();
+  if (game && sim) resetAim();
+  applySettings();
+}
+function resetAim() {
+  const b = sim.ball, c = sim.hole.cup;
+  aimAngle = Math.atan2(c.z - b.z, c.x - b.x);
 }
 function toggleSound() {
   sound.on = !sound.on;
@@ -223,7 +253,10 @@ function loadHole(i) {
   $('hudHole').textContent = `Bahn ${i + 1}/${holes.length}`;
   $('hudName').textContent = hole.name;
   $('hudPar').textContent = `Par ${hole.par}`;
-  hint(hole.def.hint, 5500);
+  peek = false;
+  charge = null;
+  swingT = -1;
+  hint(classic && i === 0 ? 'Wischen zum Zielen – Schlag-Knopf halten und loslassen.' : hole.def.hint, 5500);
   nextPlayer(true);
 }
 
@@ -236,6 +269,8 @@ function nextPlayer(first = false) {
   sim.placeBall(hole.tee.x, hole.tee.z);
   lastPos = { ...hole.tee };
   world.setBallColor(game.players[p].color);
+  world.setGolferLook(game.players[p].color, HAIR_COLORS[p % HAIR_COLORS.length]);
+  resetAim();
   mode = 'aim';
   settle = 0;
   updateHud();
@@ -263,6 +298,7 @@ function shoot(dx, dz, power) {
 
 function afterStroke() {
   if (strokes >= MAX_STROKES) { finishHole(MAX_STROKES, true); return; }
+  resetAim();
   mode = 'aim';
   settle = 0;
   updateHud();
@@ -432,17 +468,31 @@ function endDrag() {
 
 canvas.addEventListener('pointerdown', (e) => {
   sound.unlock();
-  if (mode !== 'aim' || paused || drag) return;
-  drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0 };
+  if (paused || drag) return;
+  if (classic) {
+    // Klassisch: Wischen dreht (links/rechts) und kippt (hoch/runter) die Sicht
+    if (mode === 'menu' || mode === 'card') return;
+    drag = { id: e.pointerId, look: true, x: e.clientX, y: e.clientY };
+  } else {
+    if (mode !== 'aim') return;
+    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0 };
+  }
   try { canvas.setPointerCapture(e.pointerId); } catch { /* egal */ }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!drag || e.pointerId !== drag.id) return;
+  if (drag.look) {
+    aimAngle += (e.clientX - drag.x) * 0.0045;
+    tilt = clamp(tilt + (e.clientY - drag.y) * 0.004, 0, 1);
+    drag.x = e.clientX; drag.y = e.clientY;
+    return;
+  }
   drag.dx = e.clientX - drag.sx;
   drag.dy = e.clientY - drag.sy;
 });
 canvas.addEventListener('pointerup', (e) => {
   if (!drag || e.pointerId !== drag.id) return;
+  if (drag.look) { drag = null; store.set('tilt', tilt); return; }
   const a = computeAim();
   endDrag();
   if (a && a.power >= 0.06 && mode === 'aim' && !paused) shoot(a.dx, a.dz, a.power);
@@ -450,15 +500,91 @@ canvas.addEventListener('pointerup', (e) => {
 canvas.addEventListener('pointercancel', endDrag);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+function setPowerBar(p) {
+  show('power', true);
+  $('powerFill').style.clipPath = `inset(0 ${100 - Math.round(p * 100)}% 0 0)`;
+  $('powerText').textContent = `${Math.round(p * 100)} %`;
+}
+
+// ---- Klassische Steuerung ----------------------------------------------------
+function startCharge(id) {
+  if (!classic || mode !== 'aim' || paused || charge) return;
+  sound.unlock();
+  charge = { t: 0, p: 0, id };
+}
+function releaseCharge(id) {
+  if (!charge || charge.id !== id) return;
+  const p = charge.p;
+  charge = null;
+  show('power', false);
+  if (p >= 0.04 && mode === 'aim' && !paused) {
+    swingFrom = -0.2 - p * 0.9;
+    swingT = 0;
+    shoot(Math.cos(aimAngle), Math.sin(aimAngle), p);
+  }
+}
+
+function updateClassic(dt) {
+  const ch = world.chase;
+  const inGame = mode !== 'menu';
+  ch.on = classic && inGame;
+  ch.peek = peek;
+  ch.yaw = aimAngle;
+  ch.tilt = tilt;
+  ch.golferShow = classic && inGame && mode !== 'card';
+  ch.golferFollow = mode === 'aim';
+  if (!ch.on) { ch.swing = 0; return; }
+
+  // Drehen und Kippen per Tasten oder Dreh-Knöpfen
+  let turn = 0;
+  if (keys.has('ArrowLeft')) turn -= 1;
+  if (keys.has('ArrowRight')) turn += 1;
+  if (turnHold) { turnHold.t += dt; if (turnHold.t > 0.28) turn += turnHold.dir * 0.55; }
+  aimAngle += turn * dt * (keys.has('Shift') ? 0.25 : 1.1);
+  if (keys.has('ArrowUp')) tilt = clamp(tilt - dt * 0.8, 0, 1);
+  if (keys.has('ArrowDown')) tilt = clamp(tilt + dt * 0.8, 0, 1);
+
+  // Kraftleiste pendelt, solange der Knopf gehalten wird
+  if (charge && mode !== 'aim') { charge = null; show('power', false); }
+  if (charge) {
+    charge.t += dt;
+    const ph = (charge.t / CHARGE_TIME) % 2;
+    charge.p = ph < 1 ? ph : 2 - ph;
+    setPowerBar(charge.p);
+  }
+
+  // Schläger: ausholen beim Aufladen, danach durchschwingen
+  if (charge) ch.swing = -0.2 - charge.p * 0.9;
+  else if (swingT >= 0) {
+    swingT += dt;
+    if (swingT < 0.12) ch.swing = swingFrom + (0.75 - swingFrom) * (swingT / 0.12);
+    else if (swingT < 0.7) ch.swing = 0.75 * (1 - (swingT - 0.12) / 0.58);
+    else { swingT = -1; ch.swing = 0; }
+  } else ch.swing = 0;
+
+  if (mode === 'aim') world.setAim(true, Math.cos(aimAngle), Math.sin(aimAngle), charge ? charge.p : 0.28);
+  else world.setAim(false);
+}
+
+function updateClassicUi() {
+  const playing = mode === 'aim' || mode === 'roll' || mode === 'wait';
+  const want = classic && playing;
+  if ($('classicBar').hidden === want) {
+    show('classicBar', want);
+    show('btnPeek', want);
+    document.body.classList.toggle('classic', want);
+  }
+  $('btnShot').classList.toggle('off', mode !== 'aim');
+  $('btnPeek').classList.toggle('on', peek);
+}
+
 function updateAim() {
   if (!drag) return;
   if (mode !== 'aim' || paused) { endDrag(); return; }
   aimNow = computeAim();
   if (aimNow && aimNow.power >= 0.06) {
     world.setAim(true, aimNow.dx, aimNow.dz, aimNow.power);
-    show('power', true);
-    $('powerFill').style.clipPath = `inset(0 ${100 - Math.round(aimNow.power * 100)}% 0 0)`;
-    $('powerText').textContent = `${Math.round(aimNow.power * 100)} %`;
+    setPowerBar(aimNow.power);
   } else {
     world.setAim(false);
     show('power', false);
@@ -483,6 +609,49 @@ $('optSound2').addEventListener('click', toggleSound);
 $('btnSound').addEventListener('click', toggleSound);
 $('optRetro').addEventListener('click', toggleRetro);
 $('optRetro2').addEventListener('click', toggleRetro);
+$('optView').addEventListener('click', toggleView);
+$('optView2').addEventListener('click', toggleView);
+
+// Schlag-Knopf: halten lädt auf, loslassen schlägt
+const shotBtn = $('btnShot');
+shotBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  startCharge(e.pointerId);
+  try { shotBtn.setPointerCapture(e.pointerId); } catch { /* egal */ }
+});
+shotBtn.addEventListener('pointerup', (e) => releaseCharge(e.pointerId));
+shotBtn.addEventListener('pointercancel', () => { charge = null; show('power', false); });
+shotBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Dreh-Knöpfe: antippen = kleiner Schritt, halten = weiterdrehen
+for (const [id, dir] of [['btnLeft', -1], ['btnRight', 1]]) {
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (paused) return;
+    aimAngle += dir * 0.01;
+    turnHold = { dir, t: 0 };
+    try { el.setPointerCapture(e.pointerId); } catch { /* egal */ }
+  });
+  for (const ev of ['pointerup', 'pointercancel']) el.addEventListener(ev, () => { turnHold = null; });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+$('btnPeek').addEventListener('click', () => { peek = !peek; sound.click(); });
+
+// Tastatur (am PC): Pfeiltasten drehen und kippen, Leertaste schlägt
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.key === ' ' || e.key.startsWith('Arrow')) {
+    if (mode !== 'menu' && mode !== 'card') e.preventDefault();
+    if (e.key === ' ') { if (!e.repeat) startCharge('key'); } else keys.add(e.key);
+  }
+  if (e.key === 'Shift') keys.add('Shift');
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === ' ') releaseCharge('key');
+  keys.delete(e.key);
+});
+window.addEventListener('blur', () => { keys.clear(); turnHold = null; });
 $('optFull').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen?.(); else goFullscreen(true);
 });
@@ -531,8 +700,10 @@ function tick(dt) {
       sim.step(dt);
       handleEvents();
       if (mode === 'aim' || mode === 'roll') checkState(dt);
-      updateAim();
+      updateClassic(dt);
+      if (!classic) updateAim();
     }
+    updateClassicUi();
     world.update(sim, paused ? 0 : dt);
   }
 }
@@ -557,4 +728,7 @@ window.burggolf = {
     world.render();
   },
   shoot: (angleDeg, power) => shoot(Math.cos((angleDeg * Math.PI) / 180), Math.sin((angleDeg * Math.PI) / 180), power),
+  get classic() { return { on: classic, aimDeg: (aimAngle * 180) / Math.PI, tilt, charge: charge ? charge.p : null, peek }; },
+  setTilt: (t) => { tilt = clamp(t, 0, 1); },
+  setAim: (deg) => { aimAngle = (deg * Math.PI) / 180; },
 };

@@ -31,9 +31,17 @@
       <span id="hudStrokes">Schlag 1</span>
     </div>
     <div class="hud-right">
+      <button class="icon-btn" id="btnPeek" aria-label="Übersicht ein- oder ausblenden" hidden>🗺️</button>
       <button class="icon-btn" id="btnSound" aria-label="Ton an oder aus">🔊</button>
       <button class="icon-btn" id="btnPause" aria-label="Pause">☰</button>
     </div>
+  </div>
+
+  <!-- Klassische Steuerung -->
+  <div id="classicBar" hidden>
+    <button class="turn-btn" id="btnLeft" aria-label="Nach links drehen">◀</button>
+    <button class="shot-btn" id="btnShot">Schlag</button>
+    <button class="turn-btn" id="btnRight" aria-label="Nach rechts drehen">▶</button>
   </div>
 
   <div id="power" hidden><div id="powerFill"></div><span id="powerText">0 %</span></div>
@@ -60,10 +68,11 @@
         <button class="btn" id="btnResume" hidden>Runde fortsetzen</button>
         <div class="toggles">
           <button class="chip" id="optSound">Ton: an</button>
+          <button class="chip" id="optView">Steuerung: Übersicht</button>
           <button class="chip" id="optRetro">Retro-Pixel: aus</button>
           <button class="chip" id="optFull" hidden>Vollbild</button>
         </div>
-        <p class="how">Finger auf den Bildschirm, zurückziehen wie bei einer Schleuder, zielen und loslassen.</p>
+        <p class="how" id="howText">Finger auf den Bildschirm, zurückziehen wie bei einer Schleuder, zielen und loslassen.</p>
       </div>
     </div>
   </div>
@@ -89,6 +98,7 @@
       <button class="btn" id="btnShowCard">Punktekarte</button>
       <div class="toggles">
         <button class="chip" id="optSound2">Ton: an</button>
+        <button class="chip" id="optView2">Steuerung: Übersicht</button>
         <button class="chip" id="optRetro2">Retro-Pixel: aus</button>
       </div>
       <button class="btn" id="btnQuit">Zum Hauptmenü</button>

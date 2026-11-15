@@ -1,7 +1,7 @@
 // Burggolf – macht das Spiel offline spielbar.
 // Zuerst wird immer das Netz gefragt (damit Updates sofort ankommen),
 // nur ohne Verbindung kommt die gespeicherte Kopie zum Einsatz.
-const CACHE = 'burggolf-v1';
+const CACHE = 'burggolf-v2';
 const FILES = [
   './',
   'index.html',
@@ -34,7 +34,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   event.respondWith(
-    fetch(req)
+    // 'no-cache' = beim Server nachfragen, damit Seite und Skripte immer zusammenpassen
+    fetch(req.url, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

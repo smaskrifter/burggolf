@@ -82,8 +82,52 @@ html, body {
 
 @media (max-width: 600px) {
   #hud { flex-wrap: wrap; }
-  .hud-left { flex: 1 1 0; }
+  .hud-left { flex: 1 1 0; min-width: 52%; overflow: hidden; }
   .hud-center { order: 3; margin: 0 auto; }
+}
+
+.icon-btn.on { background: var(--gold); color: #2a2110; }
+
+/* ---------- Klassische Steuerung ---------- */
+#classicBar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(12px + var(--safe-b));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  pointer-events: none;
+}
+#classicBar button { pointer-events: auto; touch-action: none; cursor: pointer; }
+.turn-btn {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 193, 90, 0.55);
+  background: rgba(30, 36, 46, 0.78);
+  color: var(--text);
+  font-size: 20px;
+}
+.shot-btn {
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  border: 3px solid #f6e2a0;
+  background: radial-gradient(circle at 35% 30%, #f6dc8a, #d09a2c);
+  color: #2a2110;
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.shot-btn:active, .turn-btn:active { transform: scale(0.94); }
+.shot-btn.off { opacity: 0.45; }
+body.classic #power { bottom: calc(108px + var(--safe-b)); }
+body.classic #hint { bottom: calc(134px + var(--safe-b)); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .shot-btn { width: 68px; height: 68px; font-size: 15px; }
+  .turn-btn { width: 46px; height: 46px; }
+  #classicBar { justify-content: flex-end; padding-right: calc(18px + var(--safe-r)); gap: 12px; }
+  body.classic #power { bottom: calc(18px + var(--safe-b)); }
+  body.classic #hint { bottom: calc(44px + var(--safe-b)); }
 }
 
 #power {
