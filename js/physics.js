@@ -153,6 +153,7 @@ function makeAimHelper(hole) {
   const N = 4; // Rasterzellen pro Kachel
   const W = hole.cols * N, H = hole.rows * N;
   const at = (i) => (i + 0.5) / N;
+  const hasWater = hole.tiles.some((row) => row.includes('~'));
   let dist = null;
 
   const segDist = (x, z, s) => {
@@ -163,6 +164,9 @@ function makeAimHelper(hole) {
   // Kann der Ball an dieser Stelle liegen (mit etwas Abstand zu Hindernissen)?
   const free = (x, z, margin) => {
     if (!hole.onFloor(x, z) || hole.tileAtPos(x, z) === '~') return false;
+    // auch zum Wasser etwas Abstand halten
+    if (hasWater && (hole.tileAtPos(x - margin, z) === '~' || hole.tileAtPos(x + margin, z) === '~'
+      || hole.tileAtPos(x, z - margin) === '~' || hole.tileAtPos(x, z + margin) === '~')) return false;
     for (const s of hole.segments) if (segDist(x, z, s) < margin + s.half) return false;
     for (const t of hole.towers) if (Math.hypot(x - t.x, z - t.z) < margin + t.r) return false;
     return true;
@@ -238,10 +242,12 @@ function makeAimHelper(hole) {
       }
       return top;
     };
-    const start = clamp(Math.floor(hole.cup.z * N), 0, H - 1) * W + clamp(Math.floor(hole.cup.x * N), 0, W - 1);
+    const cellOf = (x, z) => clamp(Math.floor(z * N), 0, H - 1) * W + clamp(Math.floor(x * N), 0, W - 1);
+    const start = cellOf(hole.cup.x, hole.cup.z);
     dist[start] = 0;
     push(0, start);
-    while (heap.length) {
+    const run = () => {
+     while (heap.length) {
       const [d, c] = pop();
       if (d > dist[c]) continue;
       const i = c % W, j = (c - i) / W;
@@ -255,6 +261,20 @@ function makeAimHelper(hole) {
         const wallCost = 1 + 3 * Math.max(0, 1 - clr[n] / N / 0.75);
         const nd = d + (Math.hypot(di, dj) / N) * wallCost;
         if (nd < dist[n]) { dist[n] = nd; push(nd, n); }
+      }
+     }
+    };
+    run();
+    // Bereiche, die nur durch einen Schacht mit dem Loch verbunden sind: Der Weg führt zum Schacht.
+    for (let again = true; again;) {
+      again = false;
+      for (const tn of hole.tunnels) {
+        const a = cellOf(tn.x, tn.z), b = cellOf(tn.ox, tn.oz);
+        if (Number.isFinite(dist[a]) || !Number.isFinite(dist[b])) continue;
+        dist[a] = dist[b] + 1;
+        push(dist[a], a);
+        run();
+        again = true;
       }
     }
   };

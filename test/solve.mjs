@@ -1,55 +1,14 @@
 // Automatischer Testspieler: prüft, ob jede Bahn lösbar ist und wie schwer.
-// Aufruf: node test/solve.mjs
-import { COURSES } from '../js/levels.js';
-import { buildHole, Sim } from '../js/physics.js';
+// Aufruf: node test/solve.mjs [Parcours-Nummer]
+import { buildHole } from '../js/physics.js';
+import { pickCourses, geodesic, simulate, hasMovers } from './common.mjs';
 
 const ANGLE_STEP = 2;
 const POWERS = [];
 for (let p = 0.1; p <= 1.0001; p += 0.05) POWERS.push(p);
 
-function geodesic(hole) {
-  const N = 4; // Raster pro Kachel
-  const W = hole.cols * N, H = hole.rows * N;
-  const dist = new Float64Array(W * H).fill(Infinity);
-  const ok = (i, j) => {
-    if (i < 0 || j < 0 || i >= W || j >= H) return false;
-    const x = (i + 0.5) / N, z = (j + 0.5) / N;
-    return hole.onFloor(x, z) && hole.tileAtPos(x, z) !== '~';
-  };
-  const ci = Math.floor(hole.cup.x * N), cj = Math.floor(hole.cup.z * N);
-  const queue = [[ci, cj]];
-  dist[cj * W + ci] = 0;
-  while (queue.length) {
-    const [i, j] = queue.shift();
-    const d = dist[j * W + i];
-    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const a = i + di, b = j + dj;
-      if (ok(a, b) && dist[b * W + a] === Infinity) { dist[b * W + a] = d + 1 / N; queue.push([a, b]); }
-    }
-  }
-  return (x, z) => {
-    const i = Math.floor(x * N), j = Math.floor(z * N);
-    if (i < 0 || j < 0 || i >= W || j >= H) return Infinity;
-    return dist[j * W + i];
-  };
-}
-
-function simulate(hole, from, t0, angleDeg, power) {
-  const sim = new Sim(hole);
-  sim.t = t0;
-  sim.placeBall(from.x, from.z);
-  const a = (angleDeg * Math.PI) / 180;
-  sim.shoot(Math.cos(a), Math.sin(a), power);
-  let guard = 0;
-  while (guard++ < 40 * 300) {
-    sim.sub();
-    if (sim.state === 'rest' || sim.state === 'holed' || sim.state === 'water' || sim.state === 'out') break;
-  }
-  return { state: sim.state, x: sim.ball.x, z: sim.ball.z, t: sim.t, usedTunnel: sim.tunnel != null };
-}
-
 let allOk = true;
-for (const course of COURSES) {
+for (const course of pickCourses(process.argv[2])) {
   console.log(`\nKurs: ${course.name}`);
   let total = 0, parTotal = 0;
   course.holes.forEach((def, idx) => {
@@ -63,7 +22,7 @@ for (const course of COURSES) {
     const notes = [];
     while (!holed && strokes < 8) {
       let best = null;
-      const waits = hole.gates.length || hole.spinners.length || hole.guards.length ? [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6] : [0];
+      const waits = hasMovers(hole) ? [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6] : [0];
       for (const wait of waits) for (let ang = 0; ang < 360; ang += ANGLE_STEP) {
         for (const p of POWERS) {
           const r = simulate(hole, pos, t + wait, ang, p);
@@ -86,11 +45,12 @@ for (const course of COURSES) {
     }
     total += strokes; parTotal += def.par;
     const acePct = ((aces / shots) * 100).toFixed(2);
+    const wetPct = ((wet / shots) * 100).toFixed(0);
     const status = !holed || outs > 0 || stuck > 0 ? 'FEHLER' : strokes > def.par ? 'SCHWER' : 'ok';
     if (status === 'FEHLER') allOk = false;
     console.log(
       `${String(idx + 1).padStart(2)}. ${def.name.padEnd(12)} Par ${def.par} | Testspieler: ${holed ? strokes : '—'} | ` +
-      `Ass-Schläge: ${aces}/${shots} (${acePct}%) | Wasser: ${wet} | Aus: ${outs} | hängt: ${stuck} | ${status}  [${notes.join(', ')}]`
+      `Ass-Schläge: ${aces}/${shots} (${acePct}%) | Wasser: ${wetPct}% | Aus: ${outs} | hängt: ${stuck} | ${status}  [${notes.join(', ')}]`
     );
   });
   console.log(`Summe Testspieler: ${total} bei Par ${parTotal}`);

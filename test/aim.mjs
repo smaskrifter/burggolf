@@ -9,13 +9,21 @@ const extra = {
   Geheimgang: [[4.5, 4.5], [7.5, 5.5]],
   Thronsaal: [[6, 5.5], [9, 4.5], [12, 5.5]],
   'Zugbrücke': [[3, 4], [9, 2.5]],
+  Zwinger: [[8.5, 2.5], [10, 5.5], [12.5, 4.4]],
+  Burggraben: [[5.5, 2.5], [6.5, 1.5], [12, 1.5]],
+  Schatzkammer: [[6, 1], [11, 1.5], [10, 3.5]],
+  Verlies: [[5, 2.5], [8, 2.5], [13.7, 4.2]],
+  Rittersaal: [[5, 3.5], [9, 3.5], [12, 3.5]],
 };
-COURSES[0].holes.forEach((def, i) => {
-  const hole = buildHole(def);
-  const deg = (x, z) => ((hole.aimAngle(x, z) * 180) / Math.PI).toFixed(1).padStart(6);
-  const cupDeg = (x, z) => ((Math.atan2(hole.cup.z - z, hole.cup.x - x) * 180) / Math.PI).toFixed(1).padStart(6);
-  const t0 = performance.now();
-  let line = `${i + 1}. ${def.name.padEnd(11)} Abschlag: ${deg(hole.tee.x, hole.tee.z)}° (Loch direkt: ${cupDeg(hole.tee.x, hole.tee.z)}°)`;
-  for (const [x, z] of extra[def.name] || []) line += ` | (${x},${z}): ${deg(x, z)}°`;
-  console.log(line, `[${(performance.now() - t0).toFixed(0)} ms]`);
-});
+for (const course of COURSES) {
+  console.log(`\nKurs: ${course.name}`);
+  course.holes.forEach((def, i) => {
+    const hole = buildHole(def);
+    const deg = (x, z) => ((hole.aimAngle(x, z) * 180) / Math.PI).toFixed(1).padStart(6);
+    const cupDeg = (x, z) => ((Math.atan2(hole.cup.z - z, hole.cup.x - x) * 180) / Math.PI).toFixed(1).padStart(6);
+    const t0 = performance.now();
+    let line = `${i + 1}. ${def.name.padEnd(12)} Abschlag: ${deg(hole.tee.x, hole.tee.z)}° (Loch direkt: ${cupDeg(hole.tee.x, hole.tee.z)}°)`;
+    for (const [x, z] of extra[def.name] || []) line += ` | (${x},${z}): ${deg(x, z)}°`;
+    console.log(line, `[${(performance.now() - t0).toFixed(0)} ms]`);
+  });
+}

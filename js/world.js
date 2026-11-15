@@ -79,12 +79,12 @@ export class World {
     this.hole = null;
     this.time = 0;
 
-    this.scene.background = this.skyTexture();
     this.scene.fog = new THREE.Fog(0xd6ecff, 45, 160);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7a4a, 1.5));
     const sun = new THREE.DirectionalLight(0xfff4dd, 2.2);
     sun.position.set(-4, 9, 6);
     this.scene.add(sun);
+    this.sun = sun;
 
     const decal = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
     this.mat = {
@@ -128,6 +128,20 @@ export class World {
     this.buildAim();
     this.buildParticles();
     this.buildGolfer();
+    this.setTheme();
+  }
+
+  /** Stimmung eines Parcours: Himmel, Dunst, Sonnenlicht und Wiese. */
+  setTheme(theme = {}) {
+    const t = { sky: ['#5aa9e6', '#bfe0fb', '#eaf6ff'], fog: 0xd6ecff, sun: 0xfff4dd, meadow: C.meadow, ...theme };
+    const key = JSON.stringify(t);
+    if (key === this.themeKey) return;
+    this.themeKey = key;
+    this.scene.background?.dispose?.();
+    this.scene.background = this.skyTexture(t.sky);
+    this.scene.fog.color.set(t.fog);
+    this.sun.color.set(t.sun);
+    this.ground.material.color.set(t.meadow);
   }
 
   // --- Spielfigur (nur in der klassischen Ansicht) -----------------------------
@@ -179,14 +193,14 @@ export class World {
     this.golferMat.hair.color.set(hairHex);
   }
 
-  skyTexture() {
+  skyTexture(colors) {
     const c = document.createElement('canvas');
     c.width = 4; c.height = 256;
     const g = c.getContext('2d');
     const grad = g.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, '#5aa9e6');
-    grad.addColorStop(0.55, '#bfe0fb');
-    grad.addColorStop(1, '#eaf6ff');
+    grad.addColorStop(0, colors[0]);
+    grad.addColorStop(0.55, colors[1]);
+    grad.addColorStop(1, colors[2]);
     g.fillStyle = grad;
     g.fillRect(0, 0, 4, 256);
     const t = new THREE.CanvasTexture(c);
@@ -208,6 +222,7 @@ export class World {
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
     return t;
   }
 
@@ -546,7 +561,9 @@ export class World {
       const len = alongX ? bo.x1 - bo.x0 : bo.z1 - bo.z0;
       const wid = alongX ? bo.z1 - bo.z0 : bo.x1 - bo.x0;
       const tex = this.chevronTexture();
-      tex.repeat.set(Math.max(1, Math.round(len / wid)), 1);
+      // Pfeile etwa quadratisch kacheln, auch bei breiten Feldern
+      const cell = Math.min(wid, 1);
+      tex.repeat.set(Math.max(1, Math.round(len / cell)), Math.max(1, Math.round(wid / cell)));
       const geo = new THREE.PlaneGeometry(len, wid);
       geo.rotateX(-Math.PI / 2);
       const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));

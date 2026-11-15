@@ -26,9 +26,20 @@ const store = {
   },
 };
 
-const course = COURSES[0];
-const holes = course.holes.map(buildHole);
-const coursePar = holes.reduce((s, h) => s + h.par, 0);
+// Alle Parcours vorbereiten; gespielt wird der gewählte
+const courses = COURSES.map((c) => {
+  const built = c.holes.map(buildHole);
+  return { ...c, holes: built, par: built.reduce((s, h) => s + h.par, 0) };
+});
+let course, holes, coursePar;
+function setCourse(id) {
+  course = courses.find((c) => c.id === id) || courses[0];
+  holes = course.holes;
+  coursePar = course.par;
+}
+setCourse(store.get('course', courses[0].id));
+// Rekorde je Parcours (der erste behält den alten Schlüssel, damit nichts verloren geht)
+const bestKey = () => (course === courses[0] ? 'best' : 'best.' + course.id);
 
 const world = new World($('c'));
 const sound = new Sound();
@@ -177,6 +188,18 @@ function renderNames() {
   for (const b of $('playerCount').children) b.classList.toggle('on', +b.dataset.n === playerCount);
 }
 
+function renderCourses() {
+  const box = $('courseSel');
+  box.innerHTML = '';
+  for (const c of courses) {
+    const b = document.createElement('button');
+    b.textContent = c.name;
+    b.dataset.id = c.id;
+    b.classList.toggle('on', c === course);
+    box.append(b);
+  }
+}
+
 function showMenu() {
   epoch++;
   mode = 'menu';
@@ -189,19 +212,23 @@ function showMenu() {
   hint(null);
   const idx = Math.floor(Math.random() * holes.length);
   world.setOrbit(true);
+  world.setTheme(course.theme);
   world.build(holes[idx], idx + 1);
   sim = new Sim(holes[idx]);
   renderNames();
+  renderCourses();
+  $('menuSub').textContent = `${course.level} · ${holes.length} Bahnen · Par ${coursePar}`;
   const save = store.get('save', null);
   $('btnResume').hidden = !save;
   if (save) {
+    const sc = courses.find((c) => c.id === save.course) || courses[0];
     const done = save.scores.every((s) => s[save.hole] != null);
-    $('btnResume').textContent = `Runde fortsetzen (Bahn ${Math.min(save.hole + (done ? 2 : 1), holes.length)})`;
+    $('btnResume').textContent = `Fortsetzen: ${sc.name}, Bahn ${Math.min(save.hole + (done ? 2 : 1), sc.holes.length)}`;
   }
-  const best = store.get('best', null);
+  const best = store.get(bestKey(), null);
   if (best?.total) {
     $('menuRecord').hidden = false;
-    $('menuRecord').textContent = `Rekord: ${best.total} Schläge (Par ${coursePar})`;
+    $('menuRecord').textContent = `Rekord ${course.name}: ${best.total} Schläge`;
   } else $('menuRecord').hidden = true;
   $('optFull').hidden = !document.documentElement.requestFullscreen;
   applySettings();
@@ -213,6 +240,8 @@ function startGame(resume = null) {
   sound.click();
   goFullscreen();
   if (resume) {
+    setCourse(resume.course);
+    store.set('course', course.id);
     game = {
       players: resume.players.map((name, i) => ({ name, color: PLAYER_COLORS[i] })),
       scores: resume.scores,
@@ -234,12 +263,13 @@ function startGame(resume = null) {
   }
   show('menu', false);
   world.setOrbit(false);
+  world.setTheme(course.theme);
   loadHole(game.hole);
 }
 
 function saveGame() {
   if (!game) return;
-  store.set('save', { players: game.players.map((p) => p.name), scores: game.scores, hole: game.hole });
+  store.set('save', { course: course.id, players: game.players.map((p) => p.name), scores: game.scores, hole: game.hole });
 }
 
 // --------------------------------------------------------------- Ablauf ---
@@ -256,7 +286,7 @@ function loadHole(i) {
   peek = false;
   charge = null;
   swingT = -1;
-  hint(classic && i === 0 ? 'Wischen zum Zielen – Schlag-Knopf halten und loslassen.' : hole.def.hint, 5500);
+  hint(classic && i === 0 && course === courses[0] ? 'Wischen zum Zielen – Schlag-Knopf halten und loslassen.' : hole.def.hint, 5500);
   nextPlayer(true);
 }
 
@@ -309,10 +339,10 @@ function finishHole(n, gaveUp = false) {
   const hole = holes[game.hole];
   game.scores[game.player][game.hole] = n;
   saveGame();
-  const best = store.get('best', { total: null, holes: [] });
+  const best = store.get(bestKey(), { total: null, holes: [] });
   if (!gaveUp && (best.holes[game.hole] == null || n < best.holes[game.hole])) {
     best.holes[game.hole] = n;
-    store.set('best', best);
+    store.set(bestKey(), best);
   }
   toast(resultName(n, hole.par, gaveUp), 1700);
   if (gaveUp) sound.sad();
@@ -365,7 +395,7 @@ function handleEvents() {
 function sum(arr) { return arr.reduce((s, v) => s + (v || 0), 0); }
 
 function renderCard(final) {
-  const best = store.get('best', { total: null, holes: [] });
+  const best = store.get(bestKey(), { total: null, holes: [] });
   const cur = game.hole;
   const played = (p) => game.scores[p].filter((v) => v != null).length;
   let html = '<thead><tr><th>Bahn</th>';
@@ -412,12 +442,12 @@ function showCard() {
     // Runde beendet
     const totals = game.scores.map(sum);
     const min = Math.min(...totals);
-    const best = store.get('best', { total: null, holes: [] });
+    const best = store.get(bestKey(), { total: null, holes: [] });
     const record = best.total == null || min < best.total;
-    if (record) { best.total = min; store.set('best', best); }
+    if (record) { best.total = min; store.set(bestKey(), best); }
     store.del('save');
     const winners = game.players.filter((_, p) => totals[p] === min).map((p) => p.name);
-    $('cardTitle').textContent = 'Runde beendet';
+    $('cardTitle').textContent = `${course.name} geschafft`;
     let sub;
     if (game.players.length === 1) sub = `${min} Schläge bei Par ${coursePar}`;
     else if (winners.length === 1) sub = `${winners[0]} gewinnt mit ${min} Schlägen!`;
@@ -599,6 +629,14 @@ $('playerCount').addEventListener('click', (e) => {
   sound.unlock(); sound.click();
   renderNames();
 });
+$('courseSel').addEventListener('click', (e) => {
+  const id = e.target.dataset?.id;
+  if (!id || id === course.id) return;
+  setCourse(id);
+  store.set('course', course.id);
+  sound.unlock(); sound.click();
+  showMenu();
+});
 $('btnStart').addEventListener('click', () => startGame());
 $('btnResume').addEventListener('click', () => {
   const save = store.get('save', null);
@@ -730,5 +768,15 @@ window.burggolf = {
   shoot: (angleDeg, power) => shoot(Math.cos((angleDeg * Math.PI) / 180), Math.sin((angleDeg * Math.PI) / 180), power),
   get classic() { return { on: classic, aimDeg: (aimAngle * 180) / Math.PI, tilt, charge: charge ? charge.p : null, peek }; },
   setTilt: (t) => { tilt = clamp(t, 0, 1); },
+  /** Springt direkt auf eine Bahn (für Tests): Parcours-Kennung, Bahnnummer ab 1. */
+  jump: (id, n) => {
+    setCourse(id);
+    game = { players: [{ name: 'Test', color: PLAYER_COLORS[0] }], scores: [[]], hole: n - 1, player: 0 };
+    for (let i = 0; i < n - 1; i++) game.scores[0][i] = holes[i].par;
+    show('menu', false); show('card', false);
+    world.setOrbit(false);
+    world.setTheme(course.theme);
+    loadHole(n - 1);
+  },
   setAim: (deg) => { aimAngle = (deg * Math.PI) / 180; },
 };

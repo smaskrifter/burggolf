@@ -1,7 +1,7 @@
 // Burggolf – macht das Spiel offline spielbar.
 // Zuerst wird immer das Netz gefragt (damit Updates sofort ankommen),
 // nur ohne Verbindung kommt die gespeicherte Kopie zum Einsatz.
-const CACHE = 'burggolf-v2';
+const CACHE = 'burggolf-v3';
 const FILES = [
   './',
   'index.html',
