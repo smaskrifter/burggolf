@@ -98,7 +98,7 @@ export function buildHole(def) {
   let maxHeight = 0;
   for (let r = 0; r <= rows * 2; r++) for (let c = 0; c <= cols * 2; c++) maxHeight = Math.max(maxHeight, height(c / 2, r / 2));
 
-  return {
+  const hole = {
     def,
     name: def.name,
     par: def.par,
@@ -141,7 +141,173 @@ export function buildHole(def) {
       }
     },
   };
+  hole.aimAngle = makeAimHelper(hole);
+  return hole;
 }
+
+// --- Zielhilfe: sinnvolle Startrichtung entlang des Bahnverlaufs ---------------
+// Liefert eine Funktion (x, z) -> Winkel. Ist das Loch frei anspielbar, zeigt sie
+// direkt darauf. Sonst folgt sie dem kürzesten Weg durch die Bahn und zielt auf den
+// am weitesten entfernten Punkt dieses Wegs, der vom Ball aus frei erreichbar ist.
+function makeAimHelper(hole) {
+  const N = 4; // Rasterzellen pro Kachel
+  const W = hole.cols * N, H = hole.rows * N;
+  const at = (i) => (i + 0.5) / N;
+  let dist = null;
+
+  const segDist = (x, z, s) => {
+    const dx = s.x2 - s.x1, dz = s.z2 - s.z1;
+    const t = clamp(((x - s.x1) * dx + (z - s.z1) * dz) / (dx * dx + dz * dz), 0, 1);
+    return Math.hypot(x - (s.x1 + dx * t), z - (s.z1 + dz * t));
+  };
+  // Kann der Ball an dieser Stelle liegen (mit etwas Abstand zu Hindernissen)?
+  const free = (x, z, margin) => {
+    if (!hole.onFloor(x, z) || hole.tileAtPos(x, z) === '~') return false;
+    for (const s of hole.segments) if (segDist(x, z, s) < margin + s.half) return false;
+    for (const t of hole.towers) if (Math.hypot(x - t.x, z - t.z) < margin + t.r) return false;
+    return true;
+  };
+  // Freie Bahn zwischen zwei Punkten? Nah am Ball zählt weniger Abstand, damit ein
+  // Ball direkt an der Wand nicht als eingesperrt gilt.
+  const clear = (x0, z0, x1, z1) => {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const steps = Math.max(1, Math.ceil(len / 0.08));
+    for (let k = 1; k <= steps; k++) {
+      const s = (len * k) / steps;
+      const margin = Math.min(BALL_R + 0.05, 0.1 + s * 0.2);
+      if (!free(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps, margin)) return false;
+    }
+    return true;
+  };
+
+  const prepare = () => {
+    const blocked = new Uint8Array(W * H);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) blocked[j * W + i] = free(at(i), at(j), BALL_R) ? 0 : 1;
+    // Abstand zur nächsten gesperrten Zelle (in Zellen), damit der Weg mittig verläuft
+    const clr = new Float32Array(W * H).fill(99);
+    let frontier = [];
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      if (blocked[j * W + i]) continue;
+      let edge = false;
+      for (let dj = -1; dj <= 1 && !edge; dj++) for (let di = -1; di <= 1; di++) {
+        const a = i + di, b = j + dj;
+        if (a < 0 || b < 0 || a >= W || b >= H || blocked[b * W + a]) { edge = true; break; }
+      }
+      if (edge) { clr[j * W + i] = 1; frontier.push(j * W + i); }
+    }
+    for (let level = 2; frontier.length; level++) {
+      const next = [];
+      for (const c of frontier) {
+        const i = c % W, j = (c - i) / W;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          const a = i + di, b = j + dj;
+          if (a < 0 || b < 0 || a >= W || b >= H) continue;
+          const n = b * W + a;
+          if (!blocked[n] && clr[n] === 99) { clr[n] = level; next.push(n); }
+        }
+      }
+      frontier = next;
+    }
+    // Kürzeste Wege vom Loch aus (Dijkstra); wandnahe Zellen kosten mehr
+    dist = new Float64Array(W * H).fill(Infinity);
+    const heap = [];
+    const push = (d, c) => {
+      heap.push([d, c]);
+      let k = heap.length - 1;
+      while (k > 0) {
+        const p = (k - 1) >> 1;
+        if (heap[p][0] <= heap[k][0]) break;
+        [heap[p], heap[k]] = [heap[k], heap[p]];
+        k = p;
+      }
+    };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) {
+        heap[0] = last;
+        let k = 0;
+        for (;;) {
+          const l = 2 * k + 1, r = l + 1;
+          let m = k;
+          if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+          if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+          if (m === k) break;
+          [heap[m], heap[k]] = [heap[k], heap[m]];
+          k = m;
+        }
+      }
+      return top;
+    };
+    const start = clamp(Math.floor(hole.cup.z * N), 0, H - 1) * W + clamp(Math.floor(hole.cup.x * N), 0, W - 1);
+    dist[start] = 0;
+    push(0, start);
+    while (heap.length) {
+      const [d, c] = pop();
+      if (d > dist[c]) continue;
+      const i = c % W, j = (c - i) / W;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const a = i + di, b = j + dj;
+        if (a < 0 || b < 0 || a >= W || b >= H) continue;
+        const n = b * W + a;
+        if (blocked[n]) continue;
+        if (di && dj && (blocked[j * W + a] || blocked[b * W + i])) continue; // nicht um Ecken schneiden
+        const wallCost = 1 + 3 * Math.max(0, 1 - clr[n] / N / 0.75);
+        const nd = d + (Math.hypot(di, dj) / N) * wallCost;
+        if (nd < dist[n]) { dist[n] = nd; push(nd, n); }
+      }
+    }
+  };
+
+  return (x, z) => {
+    const cup = hole.cup;
+    const direct = Math.atan2(cup.z - z, cup.x - x);
+    if (clear(x, z, cup.x, cup.z)) return direct;
+    if (!dist) prepare();
+    // Startzelle: die des Balls oder die nächste erreichbare daneben
+    const bi = clamp(Math.floor(x * N), 0, W - 1), bj = clamp(Math.floor(z * N), 0, H - 1);
+    let cur = -1, best = Infinity;
+    for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) {
+      const a = bi + di, b = bj + dj;
+      if (a < 0 || b < 0 || a >= W || b >= H || !Number.isFinite(dist[b * W + a])) continue;
+      const score = Math.hypot(di, dj) * 10 + dist[b * W + a];
+      if (score < best) { best = score; cur = b * W + a; }
+    }
+    if (cur < 0) return direct;
+    // Weg zum Loch ablaufen
+    const path = [];
+    for (let guard = 0; guard < W * H; guard++) {
+      const i = cur % W, j = (cur - i) / W;
+      let next = -1, nd = dist[cur];
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const a = i + di, b = j + dj;
+        if (a < 0 || b < 0 || a >= W || b >= H) continue;
+        if (dist[b * W + a] < nd) { nd = dist[b * W + a]; next = b * W + a; }
+      }
+      if (next < 0) break;
+      cur = next;
+      path.push(cur);
+    }
+    // Weitester frei erreichbarer Wegpunkt
+    let tx = null, tz = null;
+    for (let k = path.length - 1; k >= 0; k--) {
+      const i = path[k] % W, j = (path[k] - i) / W;
+      const px = at(i), pz = at(j);
+      if (Math.hypot(px - x, pz - z) < 0.6) continue;
+      if (clear(x, z, px, pz)) { tx = px; tz = pz; break; }
+    }
+    if (tx == null) return direct;
+    const angle = Math.atan2(tz - z, tx - x);
+    // Auf "geradeaus" (rechte Winkel) einrasten, wenn das fast passt und der Weg frei ist
+    const snap = Math.round(angle / (Math.PI / 2)) * (Math.PI / 2);
+    if (Math.abs(snap - angle) < 0.2) {
+      const d = Math.hypot(tx - x, tz - z);
+      if (clear(x, z, x + Math.cos(snap) * d, z + Math.sin(snap) * d)) return snap;
+    }
+    return angle;
+  };
+}
+
 
 function mergeSegments(segs) {
   const eq = (a, b) => Math.abs(a - b) < 1e-9;

@@ -7,7 +7,7 @@ import { Sound } from './audio.js';
 const MAX_STROKES = 10;
 const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#6ec6ff', '#ff8fb1'];
 const HAIR_COLORS = ['#5a3a1c', '#1f1a17', '#c9772c', '#d8c06a'];
-const CHARGE_TIME = 1.0; // Sekunden, bis die Kraftleiste einmal voll ist
+const CHARGE_TIME = 2.5; // Sekunden, bis die Kraftleiste einmal voll ist
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const $ = (id) => document.getElementById(id);
@@ -119,8 +119,8 @@ function toggleView() {
   applySettings();
 }
 function resetAim() {
-  const b = sim.ball, c = sim.hole.cup;
-  aimAngle = Math.atan2(c.z - b.z, c.x - b.x);
+  // Richtung Loch, aber dem Bahnverlauf folgend (z. B. erst geradeaus durchs Tor)
+  aimAngle = sim.hole.aimAngle(sim.ball.x, sim.ball.z);
 }
 function toggleSound() {
   sound.on = !sound.on;
