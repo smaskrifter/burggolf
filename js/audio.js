@@ -86,6 +86,11 @@ export class Sound {
     this.tone(300, 0.3, { vol: 0.12, to: 80 });
   }
 
+  boost() {
+    this.tone(260, 0.3, { type: 'sawtooth', vol: 0.12, to: 1300 });
+    this.noise(0.25, { vol: 0.1, from: 800, to: 4000 });
+  }
+
   tunnelIn() { this.tone(700, 0.5, { type: 'sine', vol: 0.2, to: 120 }); }
   tunnelOut() { this.tone(160, 0.3, { type: 'sine', vol: 0.2, to: 800 }); }
 

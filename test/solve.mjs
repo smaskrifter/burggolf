@@ -63,9 +63,10 @@ for (const course of COURSES) {
     const notes = [];
     while (!holed && strokes < 8) {
       let best = null;
-      for (let ang = 0; ang < 360; ang += ANGLE_STEP) {
+      const waits = hole.gates.length || hole.spinners.length || hole.guards.length ? [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6] : [0];
+      for (const wait of waits) for (let ang = 0; ang < 360; ang += ANGLE_STEP) {
         for (const p of POWERS) {
-          const r = simulate(hole, pos, t, ang, p);
+          const r = simulate(hole, pos, t + wait, ang, p);
           if (strokes === 0) {
             shots++;
             if (r.state === 'holed') aces++;

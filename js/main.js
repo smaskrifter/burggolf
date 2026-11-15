@@ -317,6 +317,7 @@ function handleEvents() {
         sound.splash();
         world.burst(sim.ball.x, 0, sim.ball.z, 'water');
         break;
+      case 'boost': sound.boost(); break;
       case 'tunnelIn': sound.tunnelIn(); break;
       case 'tunnelOut': sound.tunnelOut(); break;
       case 'out': break;

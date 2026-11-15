@@ -117,9 +117,13 @@ export function buildHole(def) {
     guards: (def.guards || []).map((g) => ({
       x1: g.from[0], z1: g.from[1], x2: g.to[0], z2: g.to[1], period: g.period ?? 6, r: g.r ?? 0.32, phase: g.phase ?? 0,
     })),
+    boosts: (def.boosts || []).map((b) => {
+      const len = Math.hypot(b.dir[0], b.dir[1]);
+      return { x0: b.rect[0], z0: b.rect[1], x1: b.rect[2], z1: b.rect[3], dx: b.dir[0] / len, dz: b.dir[1] / len, accel: b.accel ?? 30, max: b.max ?? 13 };
+    }),
     tunnels: (def.tunnels || []).map((t) => {
       const len = Math.hypot(t.dir[0], t.dir[1]);
-      return { x: t.in[0], z: t.in[1], ox: t.out[0], oz: t.out[1], dx: t.dir[0] / len, dz: t.dir[1] / len, speed: t.speed ?? 5, r: 0.27 };
+      return { x: t.in[0], z: t.in[1], ox: t.out[0], oz: t.out[1], dx: t.dir[0] / len, dz: t.dir[1] / len, speed: t.speed ?? 5, r: 0.27, maxSpeed: t.maxSpeed ?? 4 };
     }),
     tileAt,
     tileAtPos: (x, z) => tileAt(Math.floor(x), Math.floor(z)),
@@ -207,6 +211,7 @@ export class Sim {
     this.frozen = true;
     this.tunnel = null;
     this.tunnelTimer = 0;
+    this.inBoost = false;
     this._arm = { x1: 0, z1: 0, x2: 0, z2: 0, half: 0.08, kind: 'inner' };
   }
 
@@ -323,7 +328,16 @@ export class Sim {
     // --- Kräfte ---
     if (!this.frozen) {
       const sp = Math.hypot(b.vx, b.vz);
-      const [gx, gz] = this.slope(b.x, b.z);
+      let [gx, gz] = this.slope(b.x, b.z);
+      // Turbofelder schieben den Ball in ihre Richtung an (bis zu einem Höchsttempo).
+      let boosted = false;
+      for (const bo of hole.boosts) {
+        if (b.x < bo.x0 || b.x > bo.x1 || b.z < bo.z0 || b.z > bo.z1) continue;
+        boosted = true;
+        if (b.vx * bo.dx + b.vz * bo.dz < bo.max) { gx += bo.dx * bo.accel; gz += bo.dz * bo.accel; }
+      }
+      if (boosted && !this.inBoost) this.events.push({ type: 'boost' });
+      this.inBoost = boosted;
       const gm = Math.hypot(gx, gz);
       const sand = hole.tileAtPos(b.x, b.z) === ':';
       const fr = sand ? SAND_FRICTION : FRICTION;
@@ -377,7 +391,8 @@ export class Sim {
 
     // --- Geheimgang ---
     for (const tn of hole.tunnels) {
-      if (Math.hypot(tn.x - b.x, tn.z - b.z) < tn.r) {
+      // Wie beim Loch: Nur langsame Bälle fallen in den Schacht, schnelle rollen darüber hinweg.
+      if (Math.hypot(tn.x - b.x, tn.z - b.z) < tn.r && sp < tn.maxSpeed) {
         this.state = 'tunnel';
         this.tunnel = tn;
         this.tunnelTimer = 0.8;

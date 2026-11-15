@@ -10,8 +10,8 @@ const TILT = (58 * Math.PI) / 180;
 
 const col = (hex) => new THREE.Color(hex);
 const C = {
-  grassA: col(0x58c05c), grassB: col(0x4bb04f), high: col(0xe9f7b0),
-  sandA: col(0xe6cb85), sandB: col(0xdcbf76),
+  grassA: col(0x58c05c), grassB: col(0x4bb04f), high: col(0xb9f5a6),
+  sandA: col(0xe9c46a), sandB: col(0xdcb458),
   stone: col(0x9a9da3), stoneDark: col(0x74777d), stoneLight: col(0xc3c6cc),
   meadow: 0x7fae52, water: 0x2f8fe0,
   roof: 0xb5402f, wood: 0x8a5a2b, iron: 0x2e3238,
@@ -133,6 +133,23 @@ export class World {
     return t;
   }
 
+  chevronTexture() {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#e8452c';
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.moveTo(12, 8); g.lineTo(36, 32); g.lineTo(12, 56); g.lineTo(28, 56); g.lineTo(52, 32); g.lineTo(28, 8);
+    g.closePath();
+    g.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    return t;
+  }
+
   // --- Zielpfeil -------------------------------------------------------------
   buildAim() {
     const basic = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
@@ -230,6 +247,8 @@ export class World {
   // --- Bahn aufbauen ----------------------------------------------------------
   clearHole() {
     this.holeGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    for (const tex of this.boostTextures || []) tex.dispose();
+    this.boostTextures = [];
     this.holeGroup.clear();
     this.movers = { gates: [], spinners: [], guards: [] };
   }
@@ -258,7 +277,7 @@ export class World {
         const base = ch === ':' ? (alt ? C.sandA : C.sandB) : (alt ? C.grassA : C.grassB);
         const flip = flips[ch];
         // Höher gelegene Flächen werden heller, damit man Hügel und Rampen erkennt.
-        const shade = (x, z) => (hole.flat ? base : base.clone().lerp(C.high, Math.min(1, Math.max(0, H(x, z)) / 0.7) * 0.55));
+        const shade = (x, z) => (hole.flat ? base : base.clone().lerp(C.high, Math.min(1, Math.max(0, H(x, z)) / 0.7) * 0.5));
         const P = (u, v) => {
           const fx = flip && flip[0] ? 1 - u : u;
           const fz = flip && flip[1] ? 1 - v : v;
@@ -459,6 +478,24 @@ export class World {
       this.movers.guards.push({ def: gd, grp });
     }
 
+    // Turbofelder: Streifen mit laufenden Pfeilen
+    this.boostTextures = [];
+    for (const bo of hole.boosts) {
+      const alongX = Math.abs(bo.dx) > Math.abs(bo.dz);
+      const len = alongX ? bo.x1 - bo.x0 : bo.z1 - bo.z0;
+      const wid = alongX ? bo.z1 - bo.z0 : bo.x1 - bo.x0;
+      const tex = this.chevronTexture();
+      tex.repeat.set(Math.max(1, Math.round(len / wid)), 1);
+      const geo = new THREE.PlaneGeometry(len, wid);
+      geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      const cx = (bo.x0 + bo.x1) / 2, cz = (bo.z0 + bo.z1) / 2;
+      m.position.set(cx, H(cx, cz) + 0.004, cz);
+      m.rotation.y = Math.atan2(-bo.dz, bo.dx);
+      this.holeGroup.add(m);
+      this.boostTextures.push(tex);
+    }
+
     // Geheimgänge
     for (const tn of hole.tunnels) {
       flat(new THREE.RingGeometry(tn.r, tn.r + 0.1, 24), this.mat.magic, tn.x, tn.z);
@@ -636,6 +673,7 @@ export class World {
       m.grp.rotation.y = st.vz >= 0 ? 0 : Math.PI;
     }
     if (this.waterMesh) this.waterMesh.position.y = Math.sin(this.time * 1.6) * 0.012;
+    for (const tex of this.boostTextures || []) tex.offset.x = -(this.time * 1.8) % 1;
 
     // Ball
     const b = sim.ball;
