@@ -12,6 +12,7 @@ const col = (hex) => new THREE.Color(hex);
 const C = {
   grassA: col(0x58c05c), grassB: col(0x4bb04f), high: col(0xb9f5a6),
   sandA: col(0xe9c46a), sandB: col(0xdcb458),
+  iceA: col(0xd9f1fb), iceB: col(0xc2e4f4),
   stone: col(0x9a9da3), stoneDark: col(0x74777d), stoneLight: col(0xc3c6cc),
   meadow: 0x7fae52, water: 0x2f8fe0,
   roof: 0xb5402f, wood: 0x8a5a2b, iron: 0x2e3238,
@@ -350,7 +351,7 @@ export class World {
           continue;
         }
         const alt = (c + r) % 2 === 0;
-        const base = ch === ':' ? (alt ? C.sandA : C.sandB) : (alt ? C.grassA : C.grassB);
+        const base = ch === ':' ? (alt ? C.sandA : C.sandB) : ch === '*' ? (alt ? C.iceA : C.iceB) : (alt ? C.grassA : C.grassB);
         const flip = flips[ch];
         // Höher gelegene Flächen werden heller, damit man Hügel und Rampen erkennt.
         const shade = (x, z) => (hole.flat ? base : base.clone().lerp(C.high, Math.min(1, Math.max(0, H(x, z)) / 0.7) * 0.5));

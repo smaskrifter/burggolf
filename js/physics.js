@@ -13,12 +13,14 @@ const FRICTION = 2.2;
 const DRAG = 0.35;
 const SAND_FRICTION = 9;
 const SAND_DRAG = 1.2;
+const ICE_FRICTION = 0.55;
+const ICE_DRAG = 0.12;
 const GRAV = 10;
 const CUP_CAPTURE_SPEED = 4.5;
 
 // Welche Kachelkanten sind vollständig begehbar? (N, E, S, W)
 const OPEN_EDGES = {
-  '#': 'NESW', '~': 'NESW', ':': 'NESW',
+  '#': 'NESW', '~': 'NESW', ':': 'NESW', '*': 'NESW',
   a: 'ES', // Ecke oben links abgeschnitten
   b: 'SW', // Ecke oben rechts abgeschnitten
   c: 'NW', // Ecke unten rechts abgeschnitten
@@ -525,9 +527,9 @@ export class Sim {
       if (boosted && !this.inBoost) this.events.push({ type: 'boost' });
       this.inBoost = boosted;
       const gm = Math.hypot(gx, gz);
-      const sand = hole.tileAtPos(b.x, b.z) === ':';
-      const fr = sand ? SAND_FRICTION : FRICTION;
-      const dr = sand ? SAND_DRAG : DRAG;
+      const ground = hole.tileAtPos(b.x, b.z);
+      const fr = ground === ':' ? SAND_FRICTION : ground === '*' ? ICE_FRICTION : FRICTION;
+      const dr = ground === ':' ? SAND_DRAG : ground === '*' ? ICE_DRAG : DRAG;
       if (sp < 0.02) {
         if (gm <= fr) { b.vx = 0; b.vz = 0; }
         else { const k = (gm - fr) / gm; b.vx += gx * k * DT; b.vz += gz * k * DT; }
