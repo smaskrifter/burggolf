@@ -417,8 +417,9 @@ export const COURSES = [
         walls: [[13.6, 1.2, 13.6, 2.8]],
         towers: [[6, 1.1, 0.4], [9, 2.9, 0.4]],
         guards: [
-          { from: [4.5, 0.6], to: [10.5, 3.4], period: 3.2, r: 0.36 },
-          { from: [10.5, 0.6], to: [4.5, 3.4], period: 4.4, r: 0.36 },
+          // gleicher Takt und versetzt, damit sich die Reiter am Kreuzungspunkt nie berühren
+          { from: [4.5, 2.5], to: [10.5, 1.5], period: 3.2, r: 0.36 },
+          { from: [10.5, 0.6], to: [4.5, 3.4], period: 3.2, phase: 1.9, r: 0.36 },
           { from: [12.8, 0.6], to: [12.8, 3.4], period: 1.8, r: 0.32 },
         ],
       },
