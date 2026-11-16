@@ -565,7 +565,6 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 function setPowerBar(p) {
   show('power', true);
   $('powerFill').style.clipPath = `inset(0 ${100 - Math.round(p * 100)}% 0 0)`;
-  $('powerText').textContent = `${Math.round(p * 100)} %`;
 }
 
 // ---- Klassische Steuerung ----------------------------------------------------

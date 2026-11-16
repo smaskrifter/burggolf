@@ -64,8 +64,8 @@ export const COURSES = [
           '#####~~~######',
           '#####~~~######',
         ],
-        tee: [1.5, 1.7],
-        cup: [11.5, 3.3],
+        tee: [1.5, 1.0],
+        cup: [11.5, 4.0],
         walls: [[5, 2, 8, 2], [5, 3, 8, 3]],
       },
       {
@@ -218,12 +218,11 @@ export const COURSES = [
           '############',
           '############',
           '############',
-          '############',
         ],
-        tee: [1.5, 3.5],
-        cup: [8, 3.5],
-        towers: [[4.6, 3.5, 0.6]],
-        relief: [{ type: 'mound', x: 8, z: 3.5, r: 2.9, h: 0.65 }],
+        tee: [1.5, 3],
+        cup: [8, 3],
+        towers: [[4.6, 3, 0.6]],
+        relief: [{ type: 'mound', x: 8, z: 3, r: 2.9, h: 0.65 }],
       },
       {
         name: 'Wachgang',
@@ -268,8 +267,9 @@ export const COURSES = [
         ],
         cup: [15.5, 2.5],
         walls: [[9.95, 2, 9.95, 3], [6, 2, 9.95, 2]],
-        tunnels: [{ in: [9.5, 2.5], out: [12.6, 0.6], dir: [0.3, 1], speed: 5, maxSpeed: 5 }],
-        guards: [{ from: [14.5, 0.7], to: [14.5, 4.3], period: 3.6, r: 0.32 }],
+        tunnels: [{ in: [9.5, 2.5], out: [12.6, 0.6], dir: [0.3, 1], speed: 5, maxSpeed: 4.5 }],
+        guards: [{ from: [14.3, 0.7], to: [14.3, 4.3], period: 3.6, r: 0.32 }],
+        relief: [{ type: 'mound', x: 15.5, z: 2.5, r: 0.85, h: 0.2 }],
       },
       {
         name: 'Sturmgasse',
@@ -283,6 +283,7 @@ export const COURSES = [
           '  ~~~         ',
         ],
         cup: [12.5, 3.2],
+        towers: [[9.3, 2.5, 0.4]],
         boosts: [
           { rect: [3, 1, 4, 4], dir: [0, 1], accel: 12, max: 5 },
           // max begrenzt nur das Tempo beim Zurückblasen: Der Ball bleibt vor dem ersten Feld liegen
@@ -352,7 +353,7 @@ export const COURSES = [
       },
       {
         name: 'Schleuse',
-        par: 4,
+        par: 3,
         hint: 'Zwei Gitter im Wechsel: in der Kammer liegen bleiben – oder im perfekten Moment durch beide.',
         map: [
           '#############',
@@ -363,7 +364,7 @@ export const COURSES = [
         walls: [[5, 0, 5, 0.8], [5, 2.2, 5, 3], [7.5, 0, 7.5, 0.8], [7.5, 2.2, 7.5, 3]],
         gates: [
           { seg: [5, 0.8, 5, 2.2], period: 4, open: 1.6, phase: 0 },
-          { seg: [7.5, 0.8, 7.5, 2.2], period: 4, open: 1.6, phase: 1.6 },
+          { seg: [7.5, 0.8, 7.5, 2.2], period: 4, open: 1.6, phase: 2.3 },
         ],
         relief: [{ type: 'mound', x: 11, z: 1.5, r: 1.6, h: 0.35 }],
       },
@@ -386,7 +387,7 @@ export const COURSES = [
       {
         name: 'Wendeltreppe',
         par: 4,
-        hint: 'Einmal rundherum über die schrägen Ecken – das Loch liegt oben in der Mitte.',
+        hint: 'Einmal rundherum über die schrägen Ecken. Das äußere Turbofeld hilft, das innere bläst zurück.',
         map: [
           'a######b',
           '########',
@@ -400,12 +401,16 @@ export const COURSES = [
         tee: [1, 7],
         cup: [4, 4],
         walls: [[0, 6, 6, 6], [6, 6, 6, 2], [6, 2, 2, 2]],
+        boosts: [
+          { rect: [7.05, 3, 8, 5], dir: [0, -1], accel: 30, max: 13 },
+          { rect: [6.07, 3, 7.05, 5], dir: [0, 1], accel: 14, max: 6 },
+        ],
         relief: [{ type: 'mound', x: 4, z: 4, r: 1.9, h: 0.5 }],
       },
       {
         name: 'Tjost',
         par: 4,
-        hint: 'Zwei Reiter kreuzen die Bahn, und vor dem Loch läuft noch eine Wache.',
+        hint: 'Vorn und hinten läuft je eine Wache quer, dazwischen kreuzt ein Reiter schräg die Bahn.',
         map: [
           '################',
           '################',
@@ -417,16 +422,15 @@ export const COURSES = [
         walls: [[13.6, 1.2, 13.6, 2.8]],
         towers: [[6, 1.1, 0.4], [9, 2.9, 0.4]],
         guards: [
-          // gleicher Takt und versetzt, damit sich die Reiter am Kreuzungspunkt nie berühren
-          { from: [4.5, 2.5], to: [10.5, 1.5], period: 3.2, r: 0.36 },
-          { from: [10.5, 0.6], to: [4.5, 3.4], period: 3.2, phase: 1.9, r: 0.36 },
+          { from: [4.4, 0.6], to: [4.4, 3.4], period: 2.6, r: 0.32 },
+          { from: [10.3, 0.6], to: [6.4, 3.4], period: 3.4, r: 0.36 },
           { from: [12.8, 0.6], to: [12.8, 3.4], period: 1.8, r: 0.32 },
         ],
       },
       {
         name: 'Kerker',
         par: 4,
-        hint: 'Das Loch liegt in einer Zelle. Der offene Schacht führt nur auf die Insel, der in der Ecke direkt hinein.',
+        hint: 'Das Loch liegt in einer Zelle. Der offene Schacht führt nur auf die Insel, der in der Ecke direkt ins Loch.',
         map: [
           '#######~~~######',
           '#######~~~######',
@@ -434,10 +438,11 @@ export const COURSES = [
           '#######~~~######',
           '#######~~~######',
         ],
+        towers: [[5.8, 2.9, 0.25]],
         walls: [[5.2, 3.6, 5.2, 5], [12.7, 1.7, 12.7, 3.3], [12.7, 1.7, 14.3, 1.7], [12.7, 3.3, 14.3, 3.3]],
         tunnels: [
           { in: [5.5, 1.2], out: [10.6, 4.4], dir: [0.2, -1], speed: 4, maxSpeed: 4.5 },
-          { in: [6.4, 4.4], out: [13.95, 2.05], dir: [0, 1], speed: 2.2, maxSpeed: 3.2 },
+          { in: [6.4, 4.4], out: [14.1, 2.5], dir: [-1, 0], speed: 2, maxSpeed: 2.8 },
         ],
         guards: [{ from: [15.1, 0.6], to: [15.1, 4.4], period: 3.2, r: 0.32 }],
       },
@@ -451,12 +456,12 @@ export const COURSES = [
           '###########',
           '###########',
           '###########',
-          '###::::####',
-          '###::::####',
+          '####::#####',
+          '####::#####',
         ],
         tee: [1, 6],
         cup: [10, 1],
-        walls: [[2.5, 7, 2.5, 2], [5, 0, 5, 0.7], [5, 1.3, 5, 5], [7.5, 7, 7.5, 2]],
+        walls: [[2.5, 7, 2.5, 2], [5, 0, 5, 0.75], [5, 1.25, 5, 5], [7.5, 7, 7.5, 2]],
         guards: [{ from: [8.2, 0.5], to: [8.2, 1.7], period: 2.2, r: 0.3 }],
       },
       {
